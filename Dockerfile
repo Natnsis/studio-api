@@ -1,16 +1,14 @@
 # --- Build Stage ---
-# Use the full node image for building; it includes build-essential tools
 FROM node:20 AS builder
 
 WORKDIR /app
 
-# 1. Install Python here too, just in case a dependency needs it during install
-RUN apt-get update && apt-get install -y python3
+# 1. Install python3 AND the helper that links 'python' to 'python3'
+RUN apt-get update && apt-get install -y python3 python-is-python3
 
 COPY package*.json ./
 
-# Try a clean install. If you have peer dependency issues, 
-# add --legacy-peer-deps to the command below
+# Now npm install will find the 'python' binary it's looking for
 RUN npm install
 
 COPY . .
@@ -22,8 +20,10 @@ FROM node:20-slim
 WORKDIR /app
 
 # 2. Install Runtime dependencies (FFmpeg and Python for yt-dlp)
+# We add python-is-python3 here too so yt-dlp-exec works at runtime
 RUN apt-get update && apt-get install -y \
     python3 \
+    python-is-python3 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
