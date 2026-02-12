@@ -2,4 +2,6 @@
 nixPkgs = ["python3"]
 
 [phases.install]
-cmds = ["ln -s $(which python3) /usr/bin/python || true"]
+cmds = [
+  "ln -s $(which python3) /usr/bin/python || true"
+]
