@@ -44,6 +44,10 @@ app.post("/audio", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/health", (req: Request, res: Response) => {
+  res.json({ status: "ok" })
+})
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
