@@ -76,12 +76,27 @@ app.post("/", async (req, res) => {
         });
     }
     catch (error) {
-        console.error("YT-DLP Error:", error.stderr || error.message);
+        const stderr = error.stderr || "";
+        console.error("YT-DLP Error:", stderr || error.message);
+        let details = "Internal Error";
+        const isBot = stderr.includes("Sign in") ||
+            stderr.includes("robot") ||
+            stderr.includes("403") ||
+            stderr.includes("forbidden") ||
+            stderr.includes("captcha");
+        if (isBot) {
+            details = "YouTube bot detection triggered";
+        }
+        else if (stderr) {
+            details = stderr.split("\n")[0].slice(0, 200); // First line of stderr
+        }
+        else {
+            details = error.message.slice(0, 200);
+        }
         res.status(500).json({
             error: "Failed to extract audio",
-            details: error.stderr?.includes("Sign in")
-                ? "YouTube bot detection triggered"
-                : "Internal Error",
+            details,
+            stderr: stderr.slice(0, 500), // Include more for debugging
         });
     }
 });
