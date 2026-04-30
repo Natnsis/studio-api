@@ -29,6 +29,11 @@ const getYtDlpPath = () => {
     }
     return cachedYtDlpPath;
 };
+// Helper to find cookies.txt
+const getCookiePath = () => {
+    const cookiePath = path_1.default.resolve(process.cwd(), "cookies.txt");
+    return fs_1.default.existsSync(cookiePath) ? cookiePath : null;
+};
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
@@ -44,6 +49,7 @@ app.post("/", async (req, res) => {
         if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
             return res.status(400).json({ error: "Invalid YouTube URL" });
         }
+        const cookiePath = getCookiePath();
         const info = await (0, yt_dlp_exec_1.default)(url, {
             dumpSingleJson: true,
             noWarnings: true,
@@ -58,11 +64,7 @@ app.post("/", async (req, res) => {
                 "Sec-Ch-Ua-Mobile:?0",
                 'Sec-Ch-Ua-Platform:"Windows"',
             ],
-            // IF THE BOT ERROR PERSISTS:
-            // 1. Export cookies.txt from browser
-            // 2. Upload to Render Secret Files
-            // 3. Uncomment the line below:
-            // cookie: './cookies.txt'
+            ...(cookiePath ? { cookie: cookiePath } : {}),
         });
         // Filter audio-only formats
         const audioFormats = info.formats.filter((format) => format.acodec !== "none" && format.vcodec === "none");
@@ -113,7 +115,8 @@ app.get("/stream", (req, res) => {
     // Modern Chrome User-Agent
     const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
     // Spawn yt-dlp with the specified flags to bypass blocks
-    const ytDlp = (0, child_process_1.spawn)(getYtDlpPath(), [
+    const cookiePath = getCookiePath();
+    const ytDlpArgs = [
         "-4", // Force IPv4
         "--impersonate",
         "chrome", // Impersonate Chrome
@@ -127,7 +130,11 @@ app.get("/stream", (req, res) => {
         "-", // Output to stdout
         "--no-playlist", // Ensure only one video is processed
         url,
-    ]);
+    ];
+    if (cookiePath) {
+        ytDlpArgs.push("--cookies", cookiePath);
+    }
+    const ytDlp = (0, child_process_1.spawn)(getYtDlpPath(), ytDlpArgs);
     // Pipe the audio stream directly to the response
     ytDlp.stdout.pipe(res);
     // Log stderr for debugging
