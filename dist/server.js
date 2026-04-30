@@ -3,17 +3,44 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
 const yt_dlp_exec_1 = __importDefault(require("yt-dlp-exec"));
 const child_process_1 = require("child_process");
 const util_1 = require("util");
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const execAsync = (0, util_1.promisify)(child_process_1.exec);
-const app = (0, express_1.default)();
-app.use(express_1.default.json());
-const PORT = process.env.PORT || 3000;
-app.post("/audio", async (req, res) => {
+// Helper to find yt-dlp binary
+let cachedYtDlpPath = null;
+const getYtDlpPath = () => {
+    if (cachedYtDlpPath)
+        return cachedYtDlpPath;
     try {
-        const { url } = req.body;
+        // Check if it's in the system PATH
+        require("child_process").execSync("yt-dlp --version", { stdio: "ignore" });
+        cachedYtDlpPath = "yt-dlp";
+    }
+    catch {
+        // Fallback to node_modules binary provided by yt-dlp-exec
+        const localPath = path_1.default.resolve(process.cwd(), "node_modules", "yt-dlp-exec", "bin", "yt-dlp");
+        cachedYtDlpPath = fs_1.default.existsSync(localPath) ? localPath : "yt-dlp";
+    }
+    return cachedYtDlpPath;
+};
+const app = (0, express_1.default)();
+app.use((0, cors_1.default)());
+app.use(express_1.default.json());
+// Request logger
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+});
+const PORT = process.env.PORT || 3000;
+app.post("/", async (req, res) => {
+    try {
+        const url = req.body.url || req.body.audio;
         if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
             return res.status(400).json({ error: "Invalid YouTube URL" });
         }
@@ -56,7 +83,7 @@ app.post("/audio", async (req, res) => {
     }
 });
 app.get("/stream", (req, res) => {
-    const url = req.query.url;
+    const url = (req.query.url || req.query.audio);
     if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
         return res.status(400).json({ error: "Invalid YouTube URL" });
     }
@@ -66,7 +93,7 @@ app.get("/stream", (req, res) => {
     // Modern Chrome User-Agent
     const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
     // Spawn yt-dlp with the specified flags to bypass blocks
-    const ytDlp = (0, child_process_1.spawn)("yt-dlp", [
+    const ytDlp = (0, child_process_1.spawn)(getYtDlpPath(), [
         "-4", // Force IPv4
         "--impersonate",
         "chrome", // Impersonate Chrome
@@ -119,7 +146,7 @@ app.get("/health", async (req, res) => {
     };
     // Check yt-dlp
     try {
-        const { stdout } = await execAsync("yt-dlp --version");
+        const { stdout } = await execAsync(`${getYtDlpPath()} --version`);
         health.dependencies.ytdlp = { status: "ok", version: stdout.trim() };
     }
     catch (error) {
@@ -137,6 +164,11 @@ app.get("/health", async (req, res) => {
         health.dependencies.ffmpeg = { status: "error", error: "ffmpeg not found" };
     }
     res.status(health.status === "ok" ? 200 : 503).json(health);
+});
+// 404 Handler
+app.use((req, res) => {
+    console.log(`404 - Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ error: "Route not found" });
 });
 // 2. LISTEN ON 0.0.0.0: Required for Docker to communicate with the outside world
 app.listen(Number(PORT), "0.0.0.0", () => {

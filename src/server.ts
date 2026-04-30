@@ -1,18 +1,52 @@
+import "dotenv/config";
 import express, { Request, Response } from "express";
+import cors from "cors";
 import ytdlp from "yt-dlp-exec";
 import { spawn, exec } from "child_process";
 import { promisify } from "util";
+import path from "path";
+import fs from "fs";
 
 const execAsync = promisify(exec);
 
+// Helper to find yt-dlp binary
+let cachedYtDlpPath: string | null = null;
+const getYtDlpPath = () => {
+  if (cachedYtDlpPath) return cachedYtDlpPath;
+
+  try {
+    // Check if it's in the system PATH
+    require("child_process").execSync("yt-dlp --version", { stdio: "ignore" });
+    cachedYtDlpPath = "yt-dlp";
+  } catch {
+    // Fallback to node_modules binary provided by yt-dlp-exec
+    const localPath = path.resolve(
+      process.cwd(),
+      "node_modules",
+      "yt-dlp-exec",
+      "bin",
+      "yt-dlp",
+    );
+    cachedYtDlpPath = fs.existsSync(localPath) ? localPath : "yt-dlp";
+  }
+  return cachedYtDlpPath;
+};
+
 const app = express();
+app.use(cors());
 app.use(express.json());
+
+// Request logger
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
 const PORT = process.env.PORT || 3000;
 
-app.post("/audio", async (req: Request, res: Response) => {
+app.post("/", async (req: Request, res: Response) => {
   try {
-    const { url } = req.body;
+    const url = req.body.url || req.body.audio;
 
     if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
       return res.status(400).json({ error: "Invalid YouTube URL" });
@@ -65,7 +99,7 @@ app.post("/audio", async (req: Request, res: Response) => {
 });
 
 app.get("/stream", (req: Request, res: Response) => {
-  const url = req.query.url as string;
+  const url = (req.query.url || req.query.audio) as string;
 
   if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
     return res.status(400).json({ error: "Invalid YouTube URL" });
@@ -80,7 +114,7 @@ app.get("/stream", (req: Request, res: Response) => {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
   // Spawn yt-dlp with the specified flags to bypass blocks
-  const ytDlp = spawn("yt-dlp", [
+  const ytDlp = spawn(getYtDlpPath(), [
     "-4", // Force IPv4
     "--impersonate",
     "chrome", // Impersonate Chrome
@@ -140,7 +174,7 @@ app.get("/health", async (req: Request, res: Response) => {
 
   // Check yt-dlp
   try {
-    const { stdout } = await execAsync("yt-dlp --version");
+    const { stdout } = await execAsync(`${getYtDlpPath()} --version`);
     health.dependencies.ytdlp = { status: "ok", version: stdout.trim() };
   } catch (error) {
     health.status = "degraded";
@@ -158,6 +192,12 @@ app.get("/health", async (req: Request, res: Response) => {
   }
 
   res.status(health.status === "ok" ? 200 : 503).json(health);
+});
+
+// 404 Handler
+app.use((req: Request, res: Response) => {
+  console.log(`404 - Not Found: ${req.method} ${req.url}`);
+  res.status(404).json({ error: "Route not found" });
 });
 
 // 2. LISTEN ON 0.0.0.0: Required for Docker to communicate with the outside world
