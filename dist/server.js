@@ -49,6 +49,9 @@ app.post("/", async (req, res) => {
             noWarnings: true,
             noCheckCertificate: true, // Helps with some network-level blocks
             preferFreeFormats: true,
+            forceIpv4: true, // Force IPv4
+            impersonate: "chrome", // Impersonate Chrome
+            extractorArgs: "youtube:player_client=android,web", // Mimic Android/Web clients
             addHeader: [
                 "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 "Accept-Language:en-US,en;q=0.9",
